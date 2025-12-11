@@ -9,9 +9,9 @@ import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from scipy import signal
-from scipy.fft import fft2, fftshift, ifft2
+from scipy.fft import fft2, fftshift, ifft2, ifftshift, fft, ifft, fftfreq
 from scipy.optimize import leastsq
-
+from scipy.ndimage import gaussian_filter
 from skimage.draw import disk
 from skimage.morphology import disk as disk_vel
 import numpy.matlib as matlib
@@ -740,14 +740,25 @@ def velocity_visualization(correlation, velocity, fps, pixel_size, wavelength):
     
     return
 
+def save_csv_file(output_path, headers, data):
+    """
+    Saves fileparameters or results in csv file.
+    """
+    with open(output_path, 'w', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(headers)
+        writer.writerow(data)
+    return
+
 
 def velocity_by_aft(correlation, pixel_size, fps, num_windows, output_path, sigma=5.0, overlap = 1,intensity_thresh = 0.8, eccentricity_thresh = 0.4, visualize_results = True):
     """ 
     Alignment by Fourier Transform (AFT):
-    The followign function calculates the velocity of the MW by averaging over the
+    The following function is copied from: Marcotti S. et al., Frontiers in Computer Science, 2021 (2021), DOI: https://doi.org/10.3389/fcomp.2021.745831, 
+    # MIT License (https://github.com/OakesLab/AFT-Alignment_by_Fourier_Transform).
+    Minor modifications were made for the calculation of the MW velocity by averaging over the
     local slopes detected in the 2D autocorrelation by means of a window search.
     Windows with intensities below an input threshold are omitted to avoid noise. 
-    Note: follows the approach of: https://github.com/OakesLab/AFT-Alignment_by_Fourier_Transform
     """
     im_aft = correlation.to_numpy()
     im_aft = ndimage.gaussian_filter(im_aft, sigma=sigma)
@@ -908,15 +919,242 @@ def velocity_by_aft(correlation, pixel_size, fps, num_windows, output_path, sigm
 
     return velocity, velocity_error
 
-
-
-def save_csv_file(output_path, headers, data):
+ 
+def image_local_order(imstack, aspect_ratio, window_size = 33, overlap = 0.5, im_mask = None, intensity_thresh = 0, eccentricity_thresh = 0, 
+                        plot_overlay=False, plot_angles=False, plot_eccentricity=False, save_figures=False, save_path = ''):
+    """ 
+    Alignment by Fourier Transform (AFT):
+    # ============================================================
+    # The following function (and its helper functions) is copied from:
+    # Marcotti S. et al., Frontiers in Computer Science, 2021 (2021), DOI: https://doi.org/10.3389/fcomp.2021.745831, 
+    # MIT License (https://github.com/OakesLab/AFT-Alignment_by_Fourier_Transform).
+    # Minor modifications were made for the detection of reorientations and breaks in coordiantion
+    # in our analysis. 
     """
-    Saves fileparameters or results in csv file.
-    """
-    with open(output_path, 'w', newline='') as csvfile:
-        writer = csv.writer(csvfile)
-        writer.writerow(headers)
-        writer.writerow(data)
-    return
 
+    # check to see if it's a stack of images or a single image
+    if len(imstack.shape) == 2:
+        imstack = np.expand_dims(imstack, axis=0)
+    if im_mask is not None:
+        if imstack.shape[0] == 1:
+            im_mask = np.expand_dims(im_mask, axis=0)
+
+    # get the image shape
+    N_images, N_rows, N_cols = imstack.shape
+
+    # make window size odd if it isn't already
+    if window_size % 2 == 0:
+        window_size += 1
+    
+    # define the radius of the window
+    radius = int(np.floor((window_size) / 2))
+    
+    # make a list of the r,c positions for the windows
+    rpos = np.arange(radius,N_rows-radius,int(window_size * overlap))
+    cpos = np.arange(radius,N_cols-radius,int(window_size * overlap))
+
+    # make a structuring element to filter the mask
+    bpass_filter = disk_vel(radius * .5)
+
+    # make window mask
+    window_mask = np.zeros((window_size, window_size))
+    window_mask[int(np.floor(window_size/2)), int(np.floor(window_size/2))] = 1
+
+    # filter the mask with the structuring element to define the ROI
+    window_mask = cv2.filter2D(window_mask, -1, bpass_filter)
+    window_mask = np.rint(window_mask) == 1
+
+    # check if there is an image mask
+    if im_mask is None:
+        im_mask = np.ones_like(imstack).astype('bool')
+    else:
+        # make sure the input mask is a boolean
+        im_mask = im_mask.astype('bool')
+
+    # make x and y coordinate matrices
+    xcoords, ycoords = np.meshgrid(np.arange(0,window_size) , np.arange(0,window_size))
+
+    # length of orientation vector
+    arrow_length = radius / 2
+
+    # make lists to hold for multiple frames
+    theta_stack, ecc_stack, u_stack, v_stack = [], [], [], []
+    
+
+    for frame,im in enumerate(imstack):
+
+        # make empty list variables
+        im_theta, im_ecc = [], []
+        x, y, u, v = [], [], [], []
+        
+        
+        # loop through each position and measure the local orientation
+        for r in rpos:
+            for c in cpos:
+                # store the row and column positions
+                x.append(c)
+                y.append(r)
+
+                # check to see if point is within image mask
+                if im_mask[frame,r,c] == True:
+                    # define the window to analyze
+                    im_window = im[r-radius:r+radius+1,c-radius:c+radius+1]
+
+                    # check that it's above the intensity threshold
+                    if np.mean(im_window) > intensity_thresh:
+                        # separate out the periodic and smooth components
+                        im_window_periodic, im_window_smooth = periodic_decomposition(im_window)
+                        # take the FFT of the periodic component
+                        im_window_fft = fftshift(fft2(im_window_periodic))
+                        # find the image norm and mulitply by the mask
+                        im_window_fft_norm = image_norm(im_window_fft) * window_mask
+                        # calculate the angle and eccentricity of orientation based on the FFT moments
+                        theta, eccentricity = least_moment(im_window_fft_norm, xcoords, ycoords)
+
+                        # correct for real space
+                        theta = theta + np.pi/2
+
+                        # map everything back to between -pi/2 and pi/2
+                        if theta > np.pi/2:
+                            theta -= np.pi
+
+                        # filter based on eccentricity
+                        if eccentricity < eccentricity_thresh:
+                            eccentricity = np.nan
+                            theta = np.nan
+
+                        # add the values to each list
+                        im_theta.append(theta)
+                        im_ecc.append(eccentricity)
+                        u.append(np.cos(theta) * arrow_length)
+                        v.append(np.sin(theta) * arrow_length)
+                    else:
+                        im_theta.append(np.nan)
+                        im_ecc.append(np.nan)
+                        u.append(np.nan)
+                        v.append(np.nan)
+                else:
+                    im_theta.append(np.nan)
+                    im_ecc.append(np.nan)
+                    u.append(np.nan)
+                    v.append(np.nan)
+
+        # turn all the lists into arrays for simple indexing
+        x = np.array(x)
+        y = np.array(y)
+        u = np.array(u)
+        v = np.array(v)
+        im_theta = np.reshape(im_theta,(len(rpos),len(cpos)))
+        im_ecc = np.reshape(im_ecc,(len(rpos),len(cpos)))
+
+
+        theta_stack.append(im_theta)
+        ecc_stack.append(im_ecc)
+        u_stack.append(u)
+        v_stack.append(v)
+
+    # reduce dimensions if only one frame
+    if N_images == 1:
+        u_stack = u_stack[0]
+        v_stack = v_stack[0]
+        theta_stack = theta_stack[0]
+        ecc_stack = ecc_stack[0]
+
+    return rpos, cpos, x, y, u_stack, v_stack, theta_stack, ecc_stack
+
+
+def periodic_decomposition(im):
+    """ 
+    Alignment by Fourier Transform (AFT):
+    # ============================================================
+    # This helper function for the AFT method is copied from:
+    # Marcotti S. et al., Frontiers in Computer Science, 2021 (2021), DOI: https://doi.org/10.3389/fcomp.2021.745831, 
+    # MIT License (https://github.com/OakesLab/AFT-Alignment_by_Fourier_Transform).
+    # Minor modifications were made for the detection of reorientations and breaks in coordiantion
+    # in our analysis. 
+    """
+    im = im.astype('float32')
+    # find the number of rows and cols
+    N_rows, N_cols = im.shape
+    # create an zero matrix the size of the image
+    v = np.zeros((N_rows,N_cols))
+    # fill the edges of V with the difference between the opposite edge of the real image
+    v[0,:] = im[0,:] - im[-1,:]
+    v[-1,:] = -v[0,:]
+    v[:,0] = v[:,0] + im[:,0] - im[:,-1]
+    v[:,-1] = v[:,-1] - im[:,0] + im[:,-1]
+    # calculate the frequencies of the image
+    fx = matlib.repmat(np.cos(2 * np.pi * np.arange(0,N_cols) / N_cols),N_rows,1)
+    fy = matlib.repmat(np.cos(2 * np.pi * np.arange(0,N_rows) / N_rows),N_cols,1).T
+    # set the fx[0,0] to 0 to avoid division by zero
+    fx[0,0] = 0
+    # calculate the smoothed image component
+    s = np.real(ifft2(fft2(v) * 0.5 / (2 - fx - fy)))
+    # If you want to calculate the periodic fft directly
+    # p_fft = fftshift(fft2(actin) - fft2(v) * 0.5 / (2 - fx - fy))
+    p = im - s
+
+    return p, s
+
+def image_norm(im):
+    """ 
+    Alignment by Fourier Transform (AFT):
+    # ============================================================
+    # This helper function for the AFT method is copied from:
+    # Marcotti S. et al., Frontiers in Computer Science, 2021 (2021), DOI: https://doi.org/10.3389/fcomp.2021.745831, 
+    # MIT License (https://github.com/OakesLab/AFT-Alignment_by_Fourier_Transform).
+    # Minor modifications were made for the detection of reorientations and breaks in coordiantion
+    # in our analysis. 
+    """
+    im_norm = np.sqrt(np.real(im * np.conj(im)))
+    return im_norm
+
+def least_moment(image, xcoords=[], ycoords=[]):
+    """ 
+    Alignment by Fourier Transform (AFT):
+    # ============================================================
+    # This helper function for the AFT method is copied from:
+    # Marcotti S. et al., Frontiers in Computer Science, 2021 (2021), DOI: https://doi.org/10.3389/fcomp.2021.745831, 
+    # MIT License (https://github.com/OakesLab/AFT-Alignment_by_Fourier_Transform).
+    # Minor modifications were made for the detection of reorientations and breaks in coordiantion
+    # in our analysis. 
+    """
+    # get the image shape
+    N_rows, N_cols = image.shape
+
+    # check if xcoords and ycoords are passed in the function
+    if len(xcoords) == 0:
+        # create coordinates for the image
+        xcoords, ycoords = np.meshgrid(np.arange(0,N_cols) , np.arange(0,N_rows))
+
+    #calculate the moments
+    M00 = np.sum(image)
+    M10 = np.sum(image * xcoords)
+    M01 = np.sum(image * ycoords)
+    M11 = np.sum(image * xcoords * ycoords)
+    M20 = np.sum(image * xcoords * xcoords)
+    M02 = np.sum(image * ycoords * ycoords)
+
+    # center of mass
+    xave = M10 / M00
+    yave = M01 / M00
+
+    # calculate the central moments
+    mu20 = M20/M00 - xave**2
+    mu02 = M02/M00 - yave**2
+    mu11 = M11/M00 - xave*yave
+
+    # angle of axis
+    theta = 0.5 * np.arctan2((2 * mu11),(mu20 - mu02))
+
+    # multiply by -1 to correct for origin being in top left corner instead of bottom right
+    theta = -1 * theta
+
+    # find eigenvectors
+    lambda1 = (0.5 * (mu20 + mu02)) + (0.5 * np.sqrt(4 * mu11**2 + (mu20 - mu02)**2))
+    lambda2 = (0.5 * (mu20 + mu02)) - (0.5 * np.sqrt(4 * mu11**2 + (mu20 - mu02)**2))
+    
+    # calculate the eccentricity (e.g. how oblong it is)
+    eccentricity = np.sqrt(1 - lambda2/lambda1)
+
+    return theta, eccentricity
