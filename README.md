@@ -2,7 +2,7 @@
 
 Aikaterini M. Kourkoulou, Maggie Liu, Arnold J. T. M. Mathijssen, and Guillermina R. Ramirez-San Juan
 
-Codes developed to analyze metachronal wave dynamics and swimming trajectories of Didinium nasutum and to simulate force distribution profiles and assay their role in cell swimming. 
-
 biorXive: [https://doi.org/10.1101/2025.09.12.675801](https://doi.org/10.1101/2025.09.12.675801)
 
+Codes developed for the analysis and simulation of the metachronal wave coordination and swimming of Didinium nasutum can be found in this repository.
+A description of individual codes can be found at the beginning of each corresponding jupyter notebook.
