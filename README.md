@@ -4,5 +4,5 @@ Aikaterini M. Kourkoulou, Maggie Liu, Arnold J. T. M. Mathijssen, and Guillermin
 
 biorXive: [https://doi.org/10.1101/2025.09.12.675801](https://doi.org/10.1101/2025.09.12.675801)
 
-Codes developed for the analysis and simulation of the metachronal wave coordination and swimming of Didinium nasutum can be found in this repository.
+Codes developed for the analysis (Python) and simulation (MATLAB) of the metachronal wave coordination and swimming of Didinium nasutum can be found in this repository.
 A description of individual codes can be found at the beginning of each corresponding jupyter notebook.
