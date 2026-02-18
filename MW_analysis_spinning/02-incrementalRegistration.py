@@ -1,5 +1,5 @@
 """
-2023-08-22 - Code developed by Edward Andò EFPL Center for Imaging
+2023-08-22 - Code developed by Edward Andò EPFL Center for Imaging
 
 Tool to align images of a cell rotating with small noisy translation.
 → N.B. assumes that the timelapses have been cropped around the cell of interest and that a mask for the cell body has been prepared
