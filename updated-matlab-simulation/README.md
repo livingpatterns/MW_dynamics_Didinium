@@ -14,7 +14,7 @@ The band models represent ciliary forcing as rings of point forces with travelin
 
 All three reversal functions return `pos` and `p_hat_list`, the position and unit body axis at each update. `start_time` sets the initial forward-swimming interval and the duration simulated after reversal. Total duration is `2*start_time + reversal_time`, with `lag_time` added for the linear protocol.
 
-Lengths are in micrometers, times in seconds, and angular rates in radians per second. `mu` is dynamic viscosity, with the runner using kg/(um s). `omega1` and `omega2` in the reversal functions are the medial and anterior wave rates, respectively. The optional `beta` and `gamma` parameters scale translational and rotational mobility. They default to 1 in the reduced model; in the band models, medial values default to 1 and anterior values default to their medial counterparts.
+Lengths are in micrometers, times in seconds, and angular rates in radians per second. `mu` is dynamic viscosity, with the runner using kg/(um s). `omega1` and `omega2` in the reversal functions are the medial and anterior wave rates, respectively. The optional `beta` and `gamma` parameters scale translational and rotational mobility.
 
 The band models return `floor(T/dt)+1` rows recorded after position updates, without the initial origin. The reduced model also returns `floor(T/dt)+1` rows, but its first row is the initial origin.
 
