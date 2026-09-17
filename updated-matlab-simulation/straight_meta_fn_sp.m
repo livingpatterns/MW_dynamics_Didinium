@@ -2,20 +2,23 @@ function [pos,helix_radius,helix_pitch] = straight_meta_fn_sp(U,omega,a,mu,dt,R0
 % Motion of a self–propelled sphere with an off-centre thrust.
 %
 % U               swim speed  
-% omega_cell      body-axis rotation rate 
-% omega_mw        metachronal-wave rotation rate 
+% omega           prescribed axial rotation rate [rad/s]
 % a               sphere radius
 % mu              dynamic viscosity
 % dt              time step
-% R0              distance of force from COM
+% R0              force offset divided by a (dimensionless, chi in the manuscript)
 % T               total time
 % beta            translational mobility correction (optional; default 1)
 % gamma           rotational mobility correction (optional; default 1)
+%
+% Use um and s for lengths and times. pos includes the initial origin.
+% helix_radius and helix_pitch are PCA-based estimates in um; pitch is signed.
+% Requires Statistics and Machine Learning Toolbox for pca.
 
 if nargin < 8 || isempty(beta),  beta  = 1; end
 if nargin < 9 || isempty(gamma), gamma = 1; end
 
-% == initial state ========================================================
+% Initial state.
 p_hat   = [0 0 1];              % swimming direction (unit)
 d_hat   = [1 0 0];              % unit vector from COM to force location
 x_cm    = [0 0 0];              % COM position
@@ -27,7 +30,7 @@ pos(1,:) = x_cm;
 sixpi_mu_a  = 6*pi*mu*a;
 eightpi_mu_a3 = 8*pi*mu*a^3;
 
-% == time integration =====================================================
+% Time integration.
 for ii = 1:N
     F_mag   = sixpi_mu_a*U/beta;
     F_vec   = F_mag * p_hat;
@@ -42,6 +45,7 @@ for ii = 1:N
         n_hat  = w_tot / w_norm;
         theta  = w_norm * dt;
 
+        % Rotate the swimming direction and lever arm together (Rodrigues formula).
         p_hat  = p_hat * cos(theta) + ...
                  cross(n_hat , p_hat) * sin(theta) + ...
                  n_hat * dot(n_hat , p_hat) * (1 - cos(theta));
@@ -79,6 +83,7 @@ xproj = pos0 * u1;       % projection onto u1
 yproj = pos0 * u2;       % projection onto u2
 phi   = atan2(yproj, xproj);      % Nx1 angles in (−π,π]
 phi_unwrap = unwrap(phi);
+% Axial distance per full turn gives the signed pitch.
 p = polyfit(phi_unwrap, s, 1);   
 P = 2*pi * p(1);
 r = pos - centroid;  

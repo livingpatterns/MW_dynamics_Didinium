@@ -1,6 +1,16 @@
 
 function [pos,p_hat_list] = reversal_w_spin_desync_fn(U,omega_cell,omega1,omega2,reversal_time,a_mid,a_ant,mu,start_time,dt,lambda_mid,lambda_ant,video,beta_mid,beta_ant,gamma_mid,gamma_ant)
 
+% Loss of coordination followed by sequential reversal (Fig. S8).
+% U: speed; omega_cell: body spin; omega1/omega2: medial/anterior wave rates.
+% a_mid/a_ant: band radii; mu: dynamic viscosity; dt: time step.
+% lambda_mid/lambda_ant: wavelengths; start_time: forward-swimming duration.
+% reversal_time: reversal duration; lengths in um, times in s, rates in rad/s.
+% Set video to 1 to save an animation with make_my_video; 0 skips it.
+% beta/gamma scale translation/rotation; medial defaults to 1, anterior to medial.
+% pos and p_hat_list contain positions and unit body axes, one row per step.
+% Rows are recorded after each update; the initial state is not included.
+
 omega_mw_mid_mag = omega1;
 omega_mw_ant_mag = omega2;
 
@@ -19,7 +29,8 @@ T=start_time+reversal_time+start_time;
 
 R_body = a_mid;              % cell-body radius used in mobility denominators
 varrho_mid = a_mid;          % radial distance of medial ring from center
-h=R_body;
+h=R_body; % anterior band height above the medial plane
+% Set the force scale from U using the band-weighted translational mobility.
 beta_weight = (beta_mid*n_mid + beta_ant*n_ant)/(n_mid+n_ant);
 F = U*6*pi*mu*R_body/beta_weight;
 angles_mid = (0:(2*pi/(n_mid)):(2*pi-2*pi/(n_mid)))';
@@ -37,6 +48,7 @@ N_step = floor(T/dt);
 p_hat =[0,0,1];
 x_vec = [0,0,0];
 
+% Build the rings in a plane normal to the initial swimming direction.
 v = [0; 0; 1];
 if abs(dot(p_hat,v)) > 0.99
     v = [1; 0; 0];
@@ -80,6 +92,7 @@ for ii = 1:N_step+1
 
     v0 = (beta_mid*sum(f_mag_mid) + beta_ant*sum(f_mag_ant))/(6*pi*mu*R_body);
     % 
+    % Body spin follows the signed swimming speed during reversal.
     w_para_mid = (omega_cell*(v0/U)).*p_hat;
     w_para_ant = (omega_cell*(v0/U)).*p_hat;
     
@@ -113,6 +126,7 @@ for ii = 1:N_step+1
     theta_mid = w0_mid_norm.*dt;
     theta_ant = w0_ant_norm.*dt;
 
+    % Rodrigues rotations update the body axis and the force locations.
     p_hat = p_hat.*cos(theta)+cross(n_hat,p_hat).*sin(theta)+n_hat.*dot(n_hat,p_hat).*(1-cos(theta));
     p_hat = p_hat/norm(p_hat);
 
@@ -125,6 +139,7 @@ for ii = 1:N_step+1
     f_mag_ant = F.*(sin((2*pi*a_ant/lambda_ant).*(angles_ant-omega_mw_ant*t))+1)./(n_mid+n_ant);
 
 
+    % Silence unreversed sites while the reversed wave is rebuilt around each ring.
     if ii>=idx1 && ii<=idx2
         f_mag_mid=zeros(n_mid,1);
         f_mag_ant=zeros(n_ant,1);
@@ -140,6 +155,7 @@ for ii = 1:N_step+1
         e1 = e1 / norm(e1);
         e2 = cross(p_hat, e1);
         e2 = e2 / norm(e2);
+        % Place the newly recruited site in the current transverse frame.
         if counter_mid>1
         delta_vec_mid(counter_mid,:) = cos(angles_mid(counter_mid))*e1 + sin(angles_mid(counter_mid))*e2 ;
         end

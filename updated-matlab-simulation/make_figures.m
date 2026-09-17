@@ -1,4 +1,7 @@
-%% starup
+% Run sections in order from this folder; CSV and PNG exports overwrite existing files.
+% Requires Statistics and Machine Learning Toolbox (pca).
+
+%% Startup
 set(groot, 'defaultTextInterpreter',   'latex');
 set(groot, 'defaultAxesTickLabelInterpreter','latex');
 set(groot, 'defaultLegendInterpreter', 'latex');
@@ -9,14 +12,14 @@ set(0,'DefaultFigureColormap',viridis);
 %cell parameters
 U=1300; %swimming velocity [um/s]
 omega_cell = 3.8; %cell spin rate [rad/s]
-mu = 1e-9; %viscosity of water [um^2/s]
+mu = 1e-9; %dynamic viscosity of water [kg/(um s)]
 
 omega_ant=17; %anterior ring angular velocity [rad/s]
 omega_mid=26; %medial ring angular velocity [rad/s]
-a_mid = 54; %anterior ring radius 
-a_ant = 34.7; %medial ring radius
-lambda_mid = 28; %anterior ring mw wavelength
-lambda_ant = 25; %medial ring mw wavelength
+a_mid = 54; %medial ring radius [um] 
+a_ant = 34.7; %anterior ring radius [um]
+lambda_mid = 28; %medial ring mw wavelength [um]
+lambda_ant = 25; %anterior ring mw wavelength [um]
 
 omega = mean([omega_ant,omega_mid]); %average mw angular velocity
 a = mean([a_mid,a_ant]); %average ring radius used in reduced plots
@@ -36,7 +39,7 @@ F = U*6*pi*mu*a/beta; % raw force scale before beta correction
 %simulation parameters 
 cilia_density=1; % # of point forces per micron
 dt=(a/U)/100; %simulation time step
-%% sample trajectory fig 2
+%% Sample trajectories for different wave speeds and wavelengths
 T=1; %total simulation time
 data = table();
 figure()
@@ -64,7 +67,7 @@ title("$\omega=$"+2+", k="+0.3)
 
 %plot(pos(:,1),pos(:,3),'LineWidth',5)
 
-subplot (2,2,4) %omega = 2, k = 0.05 (lambda = 125)
+subplot (2,2,4)
 pos_2_005 = straight_meta_fn(U,0,2,2,a,...
     a,mu,dt,175,175,cilia_density,T,beta_mid,beta_ant,gamma_mid,gamma_ant);
 pretty_helix_plot(pos_2_005,0)
@@ -333,6 +336,7 @@ for ii = 1:length(reversal_time_list)
         theta_rad = acos(pz);
         phi_rad   = atan2(py, px);
 
+        % Average the body-axis polar angle after both bands have reversed.
         theta_list(ii,jj) = mean(rad2deg(theta_rad(idx2:end)));
     end
 end
@@ -353,7 +357,7 @@ xlim([0.02,1])
 ylim([0,1])
 exportgraphics(gca,'deflection_w_lag.png','Resolution',600)
 
-%%
+%% Compare the three reversal protocols (Fig. S8)
 n=40;
 start_time = 0.01;
 
@@ -397,7 +401,7 @@ ylabel('deflection angle (degrees)')
 
 set(gca,'FontSize',20)
 exportgraphics(gca,'deflection_angle_models.png','Resolution',600)
-%% make kymograph of reversal 
+%% Reversal kymograph 
 
 reversal_w_spin_step_fn(U,omega_cell,omega1,omega2,0.05,a_mid,a_ant,mu,start_time,dt,lambda_mid,lambda_ant,beta_mid,beta_ant,gamma_mid,gamma_ant);
 xlabel('$dx (\mu m)$')
@@ -431,7 +435,8 @@ set(gca,'FontSize',20)
 % plot(sigma,sqrt(pi.*sigma.^2./(2*N)))
 % 
 
-%%
+%% Sample random wavefront offsets and compare with the noise estimate
+% Set rng before this section if repeatable random samples are needed.
 T=1;
 n_sample = 10;
 n_pts = 20;
@@ -463,7 +468,8 @@ plot(NaN,NaN,'k-','DisplayName','theory')
 plot(NaN,NaN,'k--','DisplayName','simulation')
 legend show
 exportgraphics(gca,'gaussian_noise.png','Resolution',600)
-%%
+%% Save the noise prediction and sampled results
+% p_theory is pitch in um; the existing p_sim column stores angle in degrees.
 node_gaussian_noise_theory = table;
 node_gaussian_noise_theory.sigma_theory = sigma';
 node_gaussian_noise_theory.r_thoery = r_helix';
@@ -510,6 +516,7 @@ writematrix(pos,'track3.csv')
 
 
 function pretty_helix_plot(pos,y_disp)
+% Align the principal axis with x and color points by progress along the path.
 
 
 pos_c  = pos - mean(pos,1);           % translate to the centroid
